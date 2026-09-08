@@ -1,0 +1,4 @@
+interface:
+  display_name: "Generate UI Page Set"
+  short_description: "Generate homepage-led UI sets, then ask target stack"
+  default_prompt: "Use $generate-pages-from-homepage to generate homepage candidates, infer the needed pages, create the full UI image set, then ask me which target stack to implement."

@@ -1,0 +1,9 @@
+{
+  "provider": "duomi",
+  "base_url": "https://duomiapi.com",
+  "create_endpoint": "/v1/images/generations",
+  "poll_endpoint": "/v1/tasks/{id}",
+  "async": true,
+  "model": "gpt-image-2",
+  "api_key_env": "DUOMI_API_KEY"
+}

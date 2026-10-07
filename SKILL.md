@@ -1,365 +1,207 @@
 ---
 name: generate-pages-from-homepage
-description: Use when Codex needs to create a coherent multi-page mobile UI image set or implementation for an app, H5, website, or WeChat mini-program by first generating or using a homepage image as the visual master, handling mobile safe areas, iPhone status bars, WeChat mini-program capsules, then generating each page from the homepage reference and optionally implementing the result in HTML, H5, Vue, React, UniApp, Taro, or native WeChat mini-program. Trigger for requests like “生成一套移动端页面”, “生成苹果手机 UI”, “iPhone 17 Pro Max 页面”, “生成一套小程序页面”, “小程序胶囊要有”, “先生成首页再生成其它页面”, “首页作为母版生成套图”, “AI自己规划需要哪些页面”, “根据首页生成创作页/我的页/详情页”, “batch generate page images from a homepage reference”, “转成可运行项目”, or “turn the generated page images into code”.
+description: Generate coherent UI page images with the current ChatGPT/Codex session's built-in image generation tool, without requesting API keys. Use an approved homepage as the visual master. After the user confirms the complete image set, inspect all images, produce an eight-part UI/UX development handoff and crop clean reusable assets. Also use for approved uploaded UI sets, screenshot analysis, asset slicing, and optional implementation in a user-selected stack. Triggers include “生成一套小程序页面”, “首页作为母版生成套图”, “直接用 ChatGPT 生图”, “整套 UI 拆解”, “分析 UI 图片”, “裁图”, “切图”, and “turn the approved UI images into code”.
 ---
 
 # Generate Pages From Homepage
 
-## Purpose
+## Purpose and capability boundary
 
-Create a complete UI page-set workflow:
+Act as a senior UI/UX designer and frontend engineer. Follow this sequence:
 
-1. Generate homepage candidates when no homepage image exists.
-2. Let the user pick the homepage visual master.
-3. Infer the product’s necessary pages if the user did not provide a page list.
-4. Generate each page from the homepage reference.
-5. Ask for the implementation target before writing code unless the user already specified it.
-6. Implement in the selected target stack when requested.
+1. Collect the product brief, or inspect the user's uploaded image set.
+2. Generate homepage candidates using the session's **built-in image generation tool** when a visual master is missing.
+3. Use the selected homepage to generate the remaining independent page images.
+4. Present the complete set and wait for the user's approval of that set.
+5. Inspect **all** approved images before analyzing any individual page.
+6. Produce the eight-part development handoff in `references/ui-analysis.md`.
+7. Crop clean bitmap assets according to that handoff and `references/asset-slicing.md`.
+8. Implement only when the user requests code and has selected a technology stack.
 
-The key principle: keep the prompt natural and parameterized. Do not over-specify design tokens unless the user asks for strict consistency checks.
+This skill guides an agent; it is not an image API client and cannot grant image-generation capability to a host that lacks it. Do not request an API key, inspect credential environment variables, call a relay service, or send HTTP image-generation requests. If the host has no built-in image tool, explain the limitation and continue with any supplied images. Otherwise wait for usable images; do not substitute hand-coded screenshots or claim generation occurred.
 
-Important order constraint: image generation comes before implementation. Do not create HTML/CSS/Vue/React/UniApp/Taro/mini-program files as a substitute for homepage candidates. Do not hand-code a homepage first and then use that code-rendered page as the visual master unless the user explicitly asks for code-first design.
+The default post-approval deliverable is the development handoff and requested asset slices, without application code. An explicit “只要图片” request limits the deliverable to images. Existing approved uploaded images can enter directly at the whole-set inspection stage without generating a new homepage.
 
-## API Route And Prompt Integrity
+Read `references/image-generation.md` before generation, `references/ui-analysis.md` before analysis, `references/asset-slicing.md` before cropping, and `references/implementation-quality.md` only before implementation.
 
-If the user provides a specific model route, relay provider, base URL, endpoint, or model name, use that route exactly unless it cannot support the requested operation. Do not silently switch between a relay service, the official OpenAI endpoint, the built-in image tool, or a different model.
+## Inputs and defaults
 
-For example, if the user says to use a specific relay endpoint with `gpt-image-2`, keep using that relay route for image generation calls. If the workflow later needs image-reference/edit support and the relay endpoint does not support image input, stop and explain the limitation instead of quietly changing providers.
+Collect or infer:
 
-Do not store API keys, bearer tokens, relay credentials, or user secrets in `SKILL.md`. For local testing, use `runtime.local.json` for non-secret route defaults and store secrets in environment variables whenever possible.
+- Product: `app_name`, `subject`, `platform`, `core_features`.
+- Design: optional `style`, homepage reference, page list, page requirements, and exact copy.
+- Device: requested viewport, delivery dimensions, device preset, safe areas, and platform chrome.
+- Source set: images and their versions, page/state identifiers, whether the user has approved this exact set.
+- Deliverable: images only, analysis, analysis plus slices, or implementation.
+- Implementation: optional target stack, existing project conventions, and known business rules.
 
-If `runtime.local.json` exists beside `SKILL.md`, load it before image-generation calls. Supported fields:
+Ask only about missing information that blocks the current step. Infer conservative defaults and mark assumptions. Do not ask for a stack merely to analyze or crop images; use stack-neutral implementation guidance until code is requested.
 
-```json
-{
-  "provider": "duomi",
-  "base_url": "https://duomiapi.com",
-  "create_endpoint": "/v1/images/generations",
-  "poll_endpoint": "/v1/tasks/{id}",
-  "async": true,
-  "model": "gpt-image-2",
-  "api_key_env": "DUOMI_API_KEY"
-}
-```
+For a WeChat mini-program, `750x1624` is a suggested **design reference**, not a guarantee of image-tool output. Record the actual returned dimensions when measurable. Do not assume a model name, a multiples-of-16 rule, a size parameter, an `n` parameter, an API response, or exact native output dimensions.
 
-If `api_key_env` is set, read the API key from that environment variable. Do not print the key in logs or final responses.
+If the user supplied an exact prompt and asked for no changes, pass it unchanged. For structured briefs, compose the final prompt transparently and keep it in metadata when a filesystem is available.
 
-Before calling image generation, read `references/image-generation.md` for route defaults, GPT Image 2 size constraints, relay request examples, and image normalization rules.
+## Native image generation
 
-Use `scripts/normalize_image.py` to normalize raw generated images to exact delivery dimensions, for example `752x1632` raw/request images to `750x1624` deliverables.
+Use the actual built-in image tool exposed by the current host. In ChatGPT Work Mode this may be `image_gen.imagegen` / `tools.image_gen__imagegen`; other hosts may expose a different native tool. Read its schema and follow its generation, editing, reference-image, display, and persistence rules. A JSON provider setting alone is not a callable tool.
 
-Never secretly rewrite a prompt. Follow these rules:
+For each secondary page, pass the approved homepage as an **actual image reference**, not only a textual description. If reference images are not accessible, resolve that before calling the tool.
 
-- If the user says the prompt must be unchanged, send the exact prompt text as the image-generation prompt. Do not add template lines, quality words, style words, negative prompts, or hidden prompt augmentation.
-- If this skill generates a prompt from structured user parameters, it may use the templates below, but report the final prompt or save it in metadata.
-- If a prompt is modified for clarity, say that it was modified before the call when the user cares about prompt transparency.
-- Keep the API payload, returned response, and final prompt metadata where practical so the user can audit what was sent.
+`runtime.local.json`, if read, contains non-secret workflow defaults only. It must never select a relay, endpoint, credential, or fixed model.
 
-## Inputs
+Generate one independent image per page. Homepage variants are alternatives, not additional product pages. If the user supplies a collage, inspect the whole collage, then split its pages with verified bounds; do not divide it into equal cells without checking the actual layout.
 
-Collect or infer these values:
+## Mobile safe areas and platform chrome
 
-- `app_name`: product/app name, for example `AI绘图微信小程序`.
-- `subject`: what the app is about, for example `AI绘图工具`.
-- `platform`: mini-program, mobile app, website, dashboard, landing page, etc.
-- `core_features`: main things the product can do.
-- `style`: optional user style words. If missing before homepage generation, let the homepage candidates explore freely instead of inventing a style label.
-- `width` and `height`: requested delivery size. If missing and a homepage exists, use the homepage dimensions.
-- `image_request_width` and `image_request_height`: image-generation request size after GPT Image 2 normalization. For WeChat mini-program `750x1624`, request `752x1632` and normalize the downloaded image to `750x1624`.
-- `device_preset`: optional target device, for example `iPhone 17 Pro Max`, `iPhone Pro Max`, `WeChat mini-program`, or `generic mobile`.
-- `platform_chrome`: whether generated page images should show OS/platform chrome such as iOS status bar or WeChat capsule. For mobile UI image sets, default to `visible`; for runnable implementation, default to the target platform's native chrome.
-- `safe_area_policy`: optional; default to reserving realistic top and bottom safe areas for mobile pages.
-- `homepage_image`: optional approved homepage image used as the visual reference.
-- `page_count` or `page_list`: optional; if missing, infer the complete page set.
-- `page_requirements`: optional per-page modules, actions, copy, and constraints.
-- `output_target`: optional target artifact, for example `image-set`, `html`, `h5`, `vue`, `react`, `uniapp`, `taro`, or `wechat-miniprogram`.
+Generated images may include OS/platform chrome to communicate the intended device:
 
-Ask only when a missing value blocks safe execution. Otherwise infer conservatively from the homepage image and user request.
+- iOS: reserve status-bar/notch or Dynamic Island space and bottom home-indicator space.
+- WeChat mini-program: include the status bar and upper-right capsule unless the user requests a pure content canvas. Keep custom navigation and controls clear of the capsule.
+- H5: include phone chrome only when a phone screenshot/mockup is requested.
 
-For WeChat mini-program workflows, default to delivery size `750x1624` when the user does not specify size. Because GPT Image 2 requires multiples of 16, request `752x1632`, then crop or resize the downloaded image to `750x1624`. Generated mini-program page images should include the WeChat status bar and top-right capsule unless the user asks for a pure content canvas. Later implementation in the selected target stack should use a `750rpx` design-width mapping or the equivalent pattern for that stack.
+Apply the same treatment across the image set. Do not invent exact system dimensions from a screenshot.
 
-For iPhone mobile app workflows, if the user asks for `iPhone 17 Pro Max` or an Apple Pro Max mobile UI and does not provide an exact size, use a Pro Max portrait canvas and clearly record the chosen delivery size in metadata. If the image route has strict size constraints, choose the nearest supported portrait size, then normalize or document the actual output. Generated iPhone page images should include a realistic iOS status bar and reserve the top safe area; do not place app titles, back buttons, search bars, or primary actions under the status bar or Dynamic Island area.
+In runnable apps, use native safe-area APIs or CSS `env(safe-area-inset-*)`; let the platform draw its own status bar and capsule. WeChat implementations may use a `750rpx` design-width mapping. OS chrome is reference context, not a crop asset or app component.
 
-If the user asks for a usable project or implementation, ask which target technology stack to use before building unless the user already specified one. Do not assume HTML, UniApp, H5, Vue, React, Taro, or native WeChat mini-program by default.
+## Phase 1 — Brief or source-set intake
 
-If `output_target` is missing, the default deliverable is `image-set` only. Do not proceed to HTML/CSS or any runnable code implementation without an explicit target stack.
+For generation requests, collect product goals and core flows. Do not invent printing, delivery, payment, memberships, or unrelated pages unless the brief supports them.
 
-If the user asks to generate homepage candidates, call the configured image generation route for the candidates. If image generation is unavailable or the configured relay cannot perform the requested generation, stop and explain the blocker. Do not fall back to building a code mockup.
+For uploaded UI sets, inventory every supplied file first. Identify missing or unreadable images without pretending to have seen them. If the user already says the set is approved or explicitly authorizes analysis/cropping of that exact set, record that authorization and continue. Otherwise present an inventory/overview for confirmation before the post-approval work.
 
-## Mobile Safe Areas And Platform Chrome
+## Phase 2 — Homepage candidates
 
-For mobile UI image generation, distinguish between image deliverables and runnable implementation:
+If no approved homepage exists, generate candidates with the native tool.
 
-- `image-set` deliverables should look like real phone screenshots or design mockups. Include platform chrome when the platform implies it.
-- Runnable target-stack implementations should not hard-code fake OS chrome inside app content unless the user explicitly wants a screenshot simulator or static visual rebuild. Use native safe-area APIs, CSS env variables, `rpx`, or framework conventions instead.
-
-Default chrome rules:
-
-- iOS app / iPhone Pro Max / iPhone 17 Pro Max: show a clean iOS status bar in generated page images. Reserve top safe area for the status bar and Dynamic Island/notch region, then place the app navigation/header below it. Reserve bottom safe area for home indicator spacing when the page has bottom tabs or fixed bottom actions.
-- WeChat mini-program: show the status bar and top-right capsule in generated page images. Reserve enough top space so the custom navigation title, back/home buttons, search field, or page actions do not collide with the capsule. Keep tappable controls away from the capsule hit area.
-- Generic mobile H5/app: include a status bar only when the user asks for a phone screenshot/mockup. Otherwise reserve safe top spacing only if the visual style needs a native-app frame.
-
-Safe-area prompt requirements for generated images:
-
-- Keep all important UI inside the safe content area.
-- Top status/capsule area must not overlap text, icons, search boxes, tabs, banners, or cards.
-- Fixed bottom tab bars and bottom CTA buttons must sit above the home indicator safe area.
-- If using a custom navigation bar, make it visually separate from the status/capsule area.
-- Apply the same safe-area and platform-chrome treatment to homepage and all secondary pages.
-
-When creating prompts, add one short line such as:
-
-```text
-移动端安全区：生成真实手机截图效果，保留顶部状态栏安全区和底部 Home Indicator 安全区，页面内容不得与系统状态栏重叠。
-```
-
-For WeChat mini-program prompts, add:
-
-```text
-小程序顶部规范：包含微信状态栏和右上角胶囊按钮，导航标题和页面操作需避开胶囊区域。
-```
-
-For iPhone Pro Max prompts, add:
-
-```text
-iPhone 顶部规范：包含真实 iOS 状态栏，顶部内容避开 Dynamic Island/状态栏区域，底部固定操作避开 Home Indicator。
-```
-
-## Homepage First
-
-If the user has not provided an approved homepage image, generate homepage candidates first. Do not generate the rest of the page set until the user selects a homepage, unless they explicitly ask for fully automatic generation.
-
-Homepage candidates are generated images, not hand-built HTML screenshots. In this phase, only create image files, prompt/response metadata, lightweight manifests needed to track candidates, and normalized image copies.
-
-Use this homepage prompt shape:
+Suggested structured prompt:
 
 ```text
 请为【{app_name}】生成首页界面图。
-
 应用主体：{subject}
 核心功能：{core_features}
-目标风格：{style}
 平台类型：{platform}
-设备规范：{device_preset}
-尺寸：{width}x{height}
-安全区与平台组件：{safe_area_and_platform_chrome_requirements}
-
-要求首页像一个真实可用的产品首页，有清晰的主入口、核心功能展示和自然的导航结构。
+参考视口与比例：{design_reference}
+安全区与平台组件：{platform_requirements}
+要求：首页有清晰的主要入口、核心功能和自然导航，呈现真实可用的产品界面。
 ```
 
-If `style` is omitted for homepage generation, remove the `目标风格` line rather than filling it with generic words such as “高级”, “轻科技”, or “现代简洁”. If `device_preset` is omitted, remove the `设备规范` line. Always keep the `安全区与平台组件` line for mobile app, H5 phone mockup, and mini-program image generation. Generate several homepage candidates when the user wants exploration. Use one image per candidate or `n` variants for the same homepage prompt, depending on the API path.
+Include optional style/device lines only when specified. Do not silently invent a style label.
 
-If the delivery size is `750x1624`, request `752x1632` from GPT Image 2 and normalize the returned candidate to `750x1624` before showing it to the user.
+Present candidates through the host's native image display. Ask the user to choose the visual master; prior explicit permission to auto-select may satisfy this homepage choice. This does **not** approve a later, unseen full page set.
 
-If the user explicitly provides an exact prompt for homepage generation and asks for no changes, send that prompt exactly.
+Allowed work: images, prompts, candidate inventory and metadata. Do not write application code.
 
-## Infer Needed Pages
+## Phase 3 — Page planning and generation
 
-If the user does not name the pages, infer a useful complete product page set. Think from user goals and product flows, not from generic templates.
+After homepage selection, infer the necessary pages if the user did not provide a list. Work from the actual core flow, normally around 4–8 core pages when appropriate, without adding filler.
 
-Create a manifest before generating secondary pages:
+Record page IDs, purpose, expected operations, and the distinction between pages, states, dialogs, and partial views.
 
-```json
-{
-  "app_name": "...",
-  "subject": "...",
-  "platform": "...",
-  "device_preset": "iPhone 17 Pro Max",
-  "platform_chrome": "visible",
-  "safe_area_policy": "reserve top status/capsule area and bottom home indicator area",
-  "delivery_size": "750x1624",
-  "image_request_size": "752x1632",
-  "homepage_image": "...",
-  "pages": [
-    {
-      "page_name": "图生图创作",
-      "purpose": "让用户上传图片并输入修改需求",
-      "page_requirements": "上传图片、输入修改要求、选择风格、开始生成",
-      "priority": "core"
-    }
-  ]
-}
-```
-
-Page selection heuristics:
-
-- Include pages required to complete the product’s primary workflow.
-- For creator tools, consider creation/input, style/template selection, generation progress/result, works/history, detail/share, and profile/settings.
-- For commerce, consider home, category/listing, product detail, cart, checkout, order, and profile.
-- For dashboards, consider overview, list/table, detail, create/edit, settings, and account.
-- Prefer 4-8 core pages for a normal page set unless the user gives a different count.
-- Avoid generating pages that do not serve a real workflow just to fill a quota.
-
-## Reference Page Prompt Template
-
-After the homepage is approved, use this compact template for each target page:
+Suggested page prompt, with the homepage attached as a real reference:
 
 ```text
-这是一张【{app_name}】的首页。请参考这张首页，为【{app_name}】生成【{page_name}】页面。
-
-应用主体：{subject}
-页面功能：{page_requirements}
-目标风格：{style}
-设备规范：{device_preset}
-尺寸：{width}x{height}
-安全区与平台组件：{safe_area_and_platform_chrome_requirements}
-
-要求页面像同一个小程序里的新页面，而不是复制首页。
+请参考提供的【{app_name}】首页，为同一产品生成【{page_name}】页面。
+页面用途：{purpose}
+页面功能与文案：{requirements}
+参考视口与比例：{design_reference}
+安全区与平台组件：{platform_requirements}
+延续首页的颜色、排版、组件、图标和导航语言；布局应服务本页用途。
 ```
 
-Adapt wording naturally:
+Inspect outputs for unreadable copy, inconsistent styling, overlaps, missing controls and safe-area collisions. Fix obvious defects before requesting approval. Keep the actual source version available; do not overwrite an approved version with an unapproved revision.
 
-- If the product is not a mini-program, replace `小程序` with `应用`, `网站`, `后台`, or the user’s platform.
-- If `style` is omitted for reference-page generation, use `目标风格：延续首页观感`.
-- If `device_preset` is omitted, remove the `设备规范` line, but keep safe-area/platform-chrome requirements for mobile image generation.
-- If the user gives exact text that must appear in the image, include it in `页面功能` or an extra short `页面文案` line.
-- If the user explicitly says not to modify a prompt, send their prompt exactly and do not use this template.
+## Phase 4 — Whole-set approval
 
-## Phase Gates
+Present all page images and their IDs. Ask once for confirmation of the **complete current set**, making the next step explicit: eight-part UI analysis and asset cropping.
 
-Follow these phases strictly. Do not skip a gate unless the user explicitly asks for full automation and provides the missing decision.
+If the user requests revisions, revise affected images, update their source IDs/versions, and obtain approval for the revised set. Homepage selection alone, silence, elapsed time, or a generated image's existence is not whole-set approval.
 
-### Phase 1: Collect Inputs
+Record approval in `metadata/manifest.json` when possible: approved image IDs/versions, source files, actual pixel sizes, and the user's approval message or an equivalent explicit authorization. Do not fabricate approvals, hashes, paths or sizes.
 
-Collect or infer app parameters, delivery size, device preset, platform chrome, safe-area policy, and route configuration. For WeChat mini-program requests, default to delivery size `750x1624` and image request size `752x1632`.
+## Phase 5 — Whole-set inspection and eight-part handoff
 
-Allowed outputs: notes, planned prompt text, metadata paths.
+After approval, view every image at overview scale and inspect readable detail before writing individual-page analysis. Reuse the approved sources, not drafts.
 
-Forbidden outputs: generated implementation files.
+Follow `references/ui-analysis.md` **in this exact output order**:
 
-### Phase 2: Generate Homepage Candidates
+1. 一、整套 UI 概览
+2. 二、逐页结构拆解
+3. 三、公共组件与页面差异
+4. 四、视觉规范提取
+5. 五、交互与状态
+6. 六、素材清单
+7. 七、响应式与实现建议
+8. 八、最终交付清单
 
-Generate homepage candidate images using the configured image generation route. Read `references/image-generation.md` before the call. Save raw responses, raw images when available, and normalized delivery-size candidates.
+Use real page IDs and visible elements. Required page table:
 
-When the image request size differs from delivery size, normalize each returned candidate with `scripts/normalize_image.py` before presenting it for selection.
+`页面｜区域｜组件｜内容｜布局与样式｜交互｜确认程度`
 
-Allowed outputs: homepage candidate images, prompt/response metadata, candidate manifest including device preset, platform chrome, and safe-area policy.
+Required evidence labels: **明确可见、估算、推测、待确认、建议补充**. A row can have mixed labels, for example “内容明确可见；尺寸估算；跳转推测”. Keep observations and proposed improvements separate. Complete what is determinable first, then collect key unresolved questions.
 
-Forbidden outputs: page-set manifest for secondary pages, HTML/CSS, framework files, hand-coded homepage screenshots, or any target-stack implementation.
+Do not claim screenshot pixels are CSS pixels, infer exact fonts from appearance, or treat a visible button as proof of a backend/payment/business rule.
 
-Mandatory stop: after homepage candidates are generated, stop and ask the user to choose the homepage visual master. Do not infer secondary pages and do not generate other pages before the user selects a homepage, unless the user explicitly requested fully automatic selection.
+When file tools are available, save `analysis/ui-handoff.md`, `metadata/design-tokens.json`, `metadata/page-relations.json` and `metadata/asset-inventory.json`. Use the host's prescribed persistent storage; in existing Git projects use repository conventions. If file tools are absent, provide the handoff inline and clearly distinguish proposed filenames from saved files.
 
-### Phase 3: User Selects Homepage
+## Phase 6 — Analysis-led asset cropping
 
-Wait for the user to select one homepage candidate, or use the exact homepage image they provided. If the user has not selected a homepage and did not authorize auto-selection, do not continue.
+The asset inventory from section six determines what to crop. Read `references/asset-slicing.md`.
 
-Allowed outputs: selected homepage path and short confirmation.
+- Crop intrinsic imagery: photos, covers, illustrations, textures and special brand artwork.
+- Rebuild editable text, cards, buttons, fields, counts, badges and navigation with components.
+- Reuse matching icons from a consistent library where appropriate. Special illustrated/brand icons may need clean independent assets.
+- Keep full-page crops only as reference pages or explicitly requested static reproductions.
+- Check the exact source image version and pixel dimensions before measuring crop boxes.
+- Exclude embedded UI text/chrome from reusable artwork. If impossible, mark “待原始素材” or edit a separate copy with the native image tool and label it as a derived asset.
+- Do not claim that a rectangular crop removed a background or created genuine transparency.
 
-Forbidden outputs: generated secondary page images or implementation files.
+Where a local source and Python/Pillow execution are available, use `scripts/crop_assets.py` with `metadata/crop-plan.json`. This script performs exact rectangular crops only; it does not generate or edit artwork. Read the exported crops, compare them to the source, and record review results.
 
-### Phase 4: Infer Page Manifest
+If images exist only in the conversation and the host does not expose their bytes, request the required source files for cropping. Continue the available analysis meanwhile. Do not claim exported PNGs exist when they do not.
 
-After homepage selection, infer the complete product page set if the user did not provide one. Create or update the manifest with delivery size, image request size, device preset, platform chrome, safe-area policy, selected homepage, pages, page purpose, and page requirements.
+## Phase 7 — Optional implementation
 
-Allowed outputs: manifest JSON and explanation of the inferred pages.
+Write application code only after the approved handoff/crops and an implementation request with a specified target stack. If the stack is missing, ask then; analysis and slices must not be blocked by that question.
 
-Forbidden outputs: implementation files.
+Read `references/implementation-quality.md`. Preserve the source design language, build actual interactive components and data-driven repeated content, and use clean bitmap assets for intrinsic artwork.
 
-### Phase 5: Generate Page Images
+Similar structure suggests reuse, but appearance alone does not establish the same behavior. Separate functionally different components where needed. Keep business rules and guessed interactions marked until specified.
 
-Generate one independent image per target page while passing the selected homepage as the visual reference when the API route supports image input. Normalize returned images to delivery size.
+Use full-page image-backed interaction overlays only when the user explicitly asks for that implementation strategy. “高保真” or “一模一样” alone does not mean flattening a runnable application into screenshots.
 
-When the image request size differs from delivery size, keep the raw returned image and normalize a delivery copy with `scripts/normalize_image.py`.
+Preview at the measured reference viewport where possible. Verify the main flow, responsive behavior, safe areas, no overlaps, readable Chinese copy, missing assets and interactive controls. Report tests actually run and remaining limitations.
 
-Allowed outputs: page images, prompt/response metadata, updated manifest.
-
-Forbidden outputs: implementation files.
-
-Stop after this phase if `output_target` is missing.
-
-### Phase 6: Ask Target Stack
-
-If the user wants implementation and `output_target` is missing, ask which target technology stack to use. Do not default to HTML.
-
-Ask:
-
-```text
-你希望最终实现成哪种技术栈？例如：静态 HTML、H5、Vue、React、UniApp、Taro、原生微信小程序。你也可以选择只生成图片套图。
-```
-
-### Phase 7: Implement Selected Target Stack
-
-Only this phase may write `.html`, `.css`, `.vue`, `.jsx`, `.tsx`, `pages.json`, mini-program page files, framework scaffolds, route files, components, mock data, and target-stack assets.
-
-For true product workflows, prefer multiple independent page requests or Batch jobs over a single collage image. Use `n` only for variants of the same page.
-
-## Implementation Target Workflow
-
-Before this section, confirm `output_target`. If it is not specified, ask the user:
-
-```text
-你希望最终实现成哪种技术栈？例如：静态 HTML、H5、Vue、React、UniApp、Taro、原生微信小程序。你也可以选择只生成图片套图。
-```
-
-Use the generated images as visual references, but choose the build strategy from the selected target technology stack:
-
-- `image-set`: generate only the page images and metadata.
-- `html`: create a high-fidelity visual rebuild from the generated images using HTML/CSS plus clean cropped assets.
-- `h5`, `vue`, `react`, `uniapp`, `taro`, `wechat-miniprogram`: create a runnable high-fidelity visual rebuild in the selected stack with pages, routes/config, mock data, and behavior appropriate to that stack.
-
-Default implementation standard: build a high-fidelity visual rebuild like the original HTML approach: recreate the visible UI with the selected stack's native/basic primitives, custom styles, text, icons, and clean cropped visual assets; render dynamic content with real data-driven components; then add real interactions where the UI implies behavior.
-
-Do not treat this as generic business-component scaffolding or default UI-library assembly. Visual fidelity comes before abstraction. Use full-page image-backed implementation only when the user explicitly requires exact pixel equality or asks for image-backed pages.
-
-Before Phase 7 implementation, read `references/implementation-quality.md` for stack-specific fidelity, interaction, screenshot, and verification guidance.
-
-## Image-To-Selected-Stack Recreation Workflow
-
-When converting a generated page image into the selected target stack:
-
-1. Visually decompose the page into structure: header, navigation, cards, buttons, lists, media, tab bar, modals, repeated modules, and artwork.
-2. Rebuild visible layout, text, cards, controls, icons, and navigation with the selected stack's layout/style system.
-3. Render dynamic content such as lists, grids, feeds, histories, templates, works, messages, and repeated items with real components and mock/data arrays.
-4. Crop complex illustrations, thumbnails, product photos, or decorative art into `assets/` only when they should remain bitmap artwork.
-5. Preserve UTF-8 in all source files; for HTML outputs, include `<meta charset="UTF-8">`.
-6. Keep shared visual patterns, behavior, navigation, and mock data consistent across pages.
-7. Render, screenshot, compare with the source image, and iterate on obvious mismatches when practical.
-
-## Asset And Text Separation
-
-Before cropping image assets from generated pages, inspect whether the crop already contains UI text, badges, dates, icons, like counts, status bars, tab bars, or other overlay chrome.
-
-- If the overlay should be editable target-stack component text, do not crop it into the image asset.
-- If a clean crop is impossible because the generated image baked text/icons into the artwork, regenerate or edit that small asset as a clean image instead of stacking new HTML text on top of dirty pixels.
-- For repeated media cards, prefer clean artwork assets plus component-rendered badges, dates, counts, and menus.
-- For generated mobile UI images, include platform chrome when the prompt/manifest requires it: iOS status bar for iPhone mockups, WeChat status bar plus capsule for mini-program mockups. For runnable target-stack implementations, do not hard-code fake OS status bars unless the user explicitly wants a static screenshot simulator. Let the real device, browser preview frame, WeChat Developer Tools, or host platform provide status bars, and implement only the app's own navigation/header plus safe-area spacing.
-- For runnable target stacks, use the stack-appropriate responsive layout constraints: for example `rpx` and safe-area handling in mini-program/UniApp targets, or `%`, `fr`, flex/grid, and viewport units in web targets. Fixed pixel canvases are acceptable only when the user explicitly asks for static screenshot reproduction.
-
-## File Organization
-
-Prefer this structure for multi-page work:
+## Suggested output organization
 
 ```text
 output/page-set/{slug}/
-  source/
-    homepage-candidate-1-raw.png
-    homepage-candidate-1.png
-    homepage.png
-    page-name.png
-  implementation/{output_target}/
-    ...
-  screenshots/
-    page-name.png
+  source/                   # approved page references, preserving originals
+  analysis/ui-handoff.md    # eight sections
+  assets/                   # clean intrinsic artwork only
   metadata/
     manifest.json
-    page-name-response.json
+    design-tokens.json
+    page-relations.json
+    asset-inventory.json
+    crop-plan.json
+    crop-results.json
+  implementation/{stack}/   # only if requested
+  screenshots/              # implementation verification if available
 ```
 
-If working inside an existing repo, follow its asset and page conventions instead.
+Use existing project conventions when applicable. Suggested paths are not evidence of saved files.
 
-## Quality Checks
+## Final checks
 
-Before final delivery:
-
-- Verify a homepage visual master was selected or state that automatic selection was used.
-- Verify the inferred page set covers the core product workflow.
-- Verify every generated page has the requested size or document the actual returned size.
-- Verify mobile image pages reserve the correct top and bottom safe areas for the target device.
-- Verify iPhone image pages include an iOS status bar when requested and no content collides with the status bar, Dynamic Island area, or home indicator.
-- Verify WeChat mini-program image pages include the status bar and top-right capsule when requested and no navigation/search/action controls collide with the capsule.
-- Check that each page looks like the same app, not a copied homepage.
-- Check visible required modules and key text.
-- Check that icons are not missing and are not replaced with text symbols or crude CSS shapes.
-- For selected target-stack implementations, follow `references/implementation-quality.md` and verify visual fidelity mode, primary interactions, screenshots, and platform-specific preview behavior when practical.
-- Verify no major overlap, clipping, missing images, broken Chinese text, unwanted hard-coded system chrome in runnable implementations, or inert primary actions.
-- Report saved paths for images, implementation files, screenshots, and metadata.
+- Native generation uses no API key, endpoint, relay or invented tool parameters.
+- Homepage selection and complete-set approval are distinct and recorded accurately.
+- Every supplied/approved image has been inspected or listed as unavailable.
+- Page/state/dialog IDs are consistent across the analysis, relations and assets.
+- All eight sections are present and describe actual UI elements.
+- Numeric estimates and inferred flows/business rules have explicit confidence labels.
+- Design Tokens cover colors, type, spacing, radii, shadows, borders and component sizes, with evidence.
+- Missing states/screens and proposed improvements are separate from visible facts.
+- Every crop maps to a reviewed source version, valid bounds, page IDs and asset purpose.
+- Text and controls remain editable in implementation; bitmap crops contain clean intrinsic artwork.
+- Transparent assets are genuine, or their need is marked unresolved.
+- Deliver only files that exist, report verification actually performed, and list key pending questions together.

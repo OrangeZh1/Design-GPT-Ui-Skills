@@ -1,9 +1,9 @@
 {
-  "provider": "duomi",
-  "base_url": "https://duomiapi.com",
-  "create_endpoint": "/v1/images/generations",
-  "poll_endpoint": "/v1/tasks/{id}",
-  "async": true,
-  "model": "gpt-image-2",
-  "api_key_env": "DUOMI_API_KEY"
+  "provider": "chatgpt-native",
+  "api_key_required": false,
+  "workflow": "homepage -> page-set -> user-confirmation -> ui-analysis -> asset-slicing -> optional-implementation",
+  "default_deliverable": "analysis-and-assets",
+  "analysis_requires_image_set_approval": true,
+  "design_reference_size": "750x1624",
+  "actual_size_policy": "measure the returned image; do not promise exact native output"
 }

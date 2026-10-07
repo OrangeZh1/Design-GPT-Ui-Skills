@@ -1,169 +1,79 @@
-# Image Generation Reference
+# Native Image Generation Reference
 
-Use this reference before calling image generation for this skill. Do not re-search basic GPT Image 2 size rules unless the user asks for current official confirmation or the API behavior appears to differ.
+## Tool selection and scope
 
-## Route Defaults
+Use the current session's built-in image-generation/editing tool. Do not call HTTP image APIs, relay providers, credential prompts, or credential environment variables. The skill cannot expose image generation in a client that does not already provide it.
 
-If `runtime.local.json` exists beside `SKILL.md`, load it for local test defaults:
+Read the live tool schema. In ChatGPT Work Mode, the tool may be exposed as `image_gen.imagegen` or `tools.image_gen__imagegen`. Use the name and parameters actually available in the host. Do not pin an underlying model or promise API-specific sizes or batching.
 
-```json
-{
-  "provider": "duomi",
-  "base_url": "https://duomiapi.com",
-  "create_endpoint": "/v1/images/generations",
-  "poll_endpoint": "/v1/tasks/{id}",
-  "async": true,
-  "model": "gpt-image-2",
-  "api_key_env": "DUOMI_API_KEY"
-}
+`runtime.local.json` contains descriptive non-secret workflow defaults. It does not implement or activate a provider.
+
+If generation is unavailable, explain that specific limitation. Analyze/crop existing uploaded images when possible; otherwise wait for usable input. Do not replace requested generated images with code-rendered UI.
+
+## Prompt integrity
+
+- Exact-prompt requests: pass the user's text unchanged.
+- Structured briefs: build the prompt from the product, page purpose, copy and reference design; retain the final prompt in metadata when possible.
+- Preserve the approved homepage's design language across pages.
+- One independently usable image per page. Request variants as separate calls if the host has no variant parameter.
+- Respect the live tool's instructions for generation, edits, reference images, display and persistence.
+
+## Reference-image handling
+
+Pass the homepage as actual image input for every secondary page.
+
+For Work Mode's `imagegen` schema:
+
+- Brand-new generation: omit both `referenced_image_paths` and `num_last_images_to_include`.
+- Existing local sources: inspect them using the available image viewer before editing, and pass `referenced_image_paths` when all target sources have local paths.
+- Conversation-only sources: use the smallest `num_last_images_to_include` that includes **every intended reference**, up to the tool's limit (currently 5 for this schema).
+- Never provide both reference mechanisms.
+- If the approved homepage falls outside the accessible recent images, use an available genuine local copy or ask the user to attach it again. Never use an unrelated recent page by mistake.
+- Use `transparent_background: true` only for requested transparent/cutout assets; page screenshots normally use false. Preserve existing transparency on edits unless asked to change it.
+
+These names apply to that schema, not every image tool. Re-read another host's schema rather than inventing matching parameters.
+
+Example for a brand-new homepage in Work Mode code mode:
+
+```javascript
+// @exec: {"yield_time_ms": 120000, "max_output_tokens": 1000}
+const result = await tools.image_gen__imagegen({
+  prompt: "请为校园证件照微信小程序生成一张首页界面图，主入口清晰，保留微信顶部状态栏与胶囊安全区。",
+  transparent_background: false
+});
+generatedImage(result);
 ```
 
-Read the API key from `api_key_env`. Never print or save the key in logs, prompts, responses, manifests, or final answers.
+For secondary pages, add the actual homepage reference using the correct mechanism. The above example is not a shell command or a standalone JavaScript API client.
 
-If the user gives a different route/model/key for the current task, that user-provided route overrides `runtime.local.json`.
+If the execution call yields a running cell, resume using that host's prescribed wait mechanism. Do not dump full results or base64 image bytes into logs. Return the result through the native generated-image display helper.
 
-## Prompt Integrity
+## Dimensions and source preservation
 
-There are two prompt modes:
+`750x1624` may be the intended mini-program design reference; the native tool does not necessarily offer a precise size parameter. Include the intended viewport/aspect in structured prompts without promising exact output.
 
-1. **Exact prompt mode**: if the user says the prompt must be unchanged, send the exact text. Do not add template text, style words, negative prompts, dimensions, or quality hints unless those are already in the user's prompt.
-2. **Structured workflow mode**: if the user gives product parameters, build the prompt from the skill template. Save the final prompt in metadata and report it when relevant.
+Measure actual image dimensions when bytes are accessible. Record unknown dimensions as “待确认”. Do not assume source image pixels equal device CSS pixels or `rpx`.
 
-## GPT Image 2 Size Rules
+Present native image results using the host's image display and automatic persistence. Do not download/upload a generated image merely to show or save it. A local copy is appropriate when a separately requested deliverable, such as asset cropping, requires its pixels and the host allows access.
 
-For direct GPT Image 2 size control, requested image dimensions must satisfy:
+Keep original approved sources unchanged. Normalization is optional and must be explicit:
 
-- max edge `<= 3840px`
-- both width and height are multiples of `16`
-- long-to-short ratio `<= 3:1`
-- total pixels between `655,360` and `8,294,400`
+- Prefer analysis/cropping against the original image dimensions.
+- Do not blindly center-crop a UI screenshot; it may remove navigation or controls.
+- If exact delivery dimensions are requested, use host-approved processing only after inspecting the content. Preserve the original and record the transform.
+- `scripts/normalize_image.py` is an optional legacy geometry utility, not a generation dependency. Its cover-crop mode may remove edges and its stretch mode distorts proportions. Do not apply either automatically.
 
-Popular valid sizes:
+## Clean derived assets
 
-- `1024x1024`
-- `1536x1024`
-- `1024x1536`
-- `2048x2048`
-- `2048x1152`
-- `3840x2160`
-- `2160x3840`
-- `auto`
+If artwork contains baked-in editable labels/badges, first seek the original clean asset. If a replacement is needed, use the native editing tool on a separate copy, preserving the approved page.
 
-Also supports aspect ratio format: `1:1`, `3:2`, `2:3`, `auto`.
-
-## WeChat Mini Program Size Policy
-
-For a WeChat mini-program design target of `750x1624`:
-
-1. Use image request size `752x1632` because GPT Image 2 requires multiples of 16.
-2. After download, normalize the image to delivery size `750x1624` by center-cropping or resizing.
-3. Save both raw and normalized images when practical:
-   - `homepage-candidate-1-raw.png`
-   - `homepage-candidate-1.png`
-4. Prefer the bundled script:
-
-```bash
-python scripts/normalize_image.py --input homepage-candidate-1-raw.png --out homepage-candidate-1.png --size 750x1624
-```
-
-5. Later implementation in the selected target stack should treat the design width as `750rpx` or equivalent. Do not hard-code fake phone status bars.
-
-If the relay endpoint ignores size or returns another size, still normalize to the requested delivery size and document the raw returned size.
-
-## Async API Flow (Duomi)
-
-The Duomi API currently only supports async image generation. The flow is:
-
-### Step 1: Create Task
-
-`POST {base_url}/v1/images/generations?async=true`
-
-Headers:
-
-```
-Authorization: {api_key}
-Content-Type: application/json
-```
-
-Body:
-
-```json
-{
-  "model": "gpt-image-2",
-  "prompt": "FINAL_PROMPT_HERE",
-  "size": "752x1632",
-  "quality": "medium"
-}
-```
-
-Fields:
-
-- `model` (required): model name, currently supports `gpt-image-2`
-- `prompt` (required): text description, max 5000 characters
-- `size` (optional): `widthxheight` (both must be multiples of 16), or ratio format `1:1`/`3:2`/`2:3`/`auto`
-- `image` (optional): reference image URL, single string or array of strings
-- `quality` (optional): `low`/`medium`/`high`
-
-Response contains a task ID. Parse `id` from the response.
-
-### Step 2: Poll Task Result
-
-`GET {base_url}/v1/tasks/{id}`
-
-Headers:
-
-```
-Authorization: {api_key}
-```
-
-Poll until the task status indicates completion. When complete, the response will contain image URLs in the result data.
-
-### Step 3: Download and Normalize
-
-Download the image from the returned URL, save the raw image, then normalize to delivery size if needed.
-
-## Homepage Candidate Request Example
-
-Structured prompt example:
+Suggested structured prompt:
 
 ```text
-请为【AI绘图微信小程序】生成首页界面图。
-
-应用主体：AI绘图工具
-核心功能：文生图、图生图、换风格
-平台类型：微信小程序
-尺寸：750x1624
-
-要求首页像一个真实可用的产品首页，有清晰的主入口、核心功能展示和自然的导航结构。
+请从参考图中的【{asset_subject}】制作独立素材，保留其视觉风格。
+仅保留素材本身，移除属于界面的文字、角标、日期、数字、菜单、状态栏和导航。
+背景要求：{transparent_or_solid_background}
+这是一张派生素材，不修改已确认的页面。
 ```
 
-API request size for this example: `752x1632`.
-Delivery size after normalization: `750x1624`.
-
-## Image Reference Support
-
-When the API supports the `image` field and a homepage reference image is available, pass the homepage image URL in the `image` field for secondary page generation:
-
-```json
-{
-  "model": "gpt-image-2",
-  "prompt": "PAGE_PROMPT_HERE",
-  "size": "752x1632",
-  "image": "https://example.com/homepage-reference.png"
-}
-```
-
-Multiple reference images can be passed as an array.
-
-## Clean Asset Regeneration Prompt
-
-When a cropped asset contains baked-in UI chrome, regenerate a clean asset:
-
-```text
-只生成一张纯图片素材，不要任何文字、角标、日期、爱心、数字、菜单点、状态栏、底部导航或 UI 覆盖元素。
-主题：{asset_subject}
-风格：与首页母版保持一致
-尺寸：{asset_width}x{asset_height}
-```
-
-Use component code for badges, counts, dates, menus, labels, tab bars, and headers.
+A replacement may differ from the source; label it “重新生成/编辑的派生素材，需核对”. Exact rectangular crops use the crop utility and preserve source pixels. Background removal and artwork edits use the native image tool, subject to its live instructions.

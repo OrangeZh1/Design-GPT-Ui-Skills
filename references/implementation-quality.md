@@ -1,6 +1,6 @@
 # Implementation Quality Reference
 
-Read this reference only before Phase 7 implementation or when reviewing an implemented target stack.
+Read this reference only before optional implementation, after whole-set approval, the eight-part UI analysis and analysis-led asset slicing, or when reviewing an implemented target stack.
 
 ## Standard
 
@@ -23,7 +23,7 @@ In visual rebuild mode:
 
 - Rebuild visible layout, text, cards, controls, icons, and navigation using the selected stack.
 - Render dynamic regions with real components bound to data arrays or mock data, not baked into screenshots.
-- Crop only complex artwork, photos, illustrations, or textures that are better kept as bitmap assets.
+- Crop only complex artwork, photos, illustrations, or textures selected in the approved handoff's asset inventory. Follow references/asset-slicing.md and keep source version/bounds metadata.
 - Avoid cropping UI text, badges, dates, counts, menus, tab bars, or status bars into bitmap assets when they should be editable or interactive.
 - Tune layout against screenshots until the result is close to the generated image.
 - Do not over-abstract components if abstraction makes the visual result worse.
@@ -70,7 +70,7 @@ Only crop the item's intrinsic artwork, cover image, avatar, product photo, illu
 
 ## Image-Backed Exact Mode
 
-Use image-backed exact mode only when the user requires "一模一样", "完全一致", "100%一致", "pixel-perfect", asks for a full-image background, or prioritizes zero visible differences over editable UI.
+Use image-backed exact mode only when the user explicitly selects full-image-backed pages or static screenshot reproduction with interaction overlays. High fidelity or “一模一样” alone does not authorize replacing editable UI with a screenshot.
 
 In image-backed exact mode:
 

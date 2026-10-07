@@ -1,5 +1,13 @@
 # Analysis-Led Asset Slicing
 
+## Contents
+
+- Decide what remains an image
+- Inspect and measure
+- Crop-plan schema
+- Exact crop utility
+- Review and deliver
+
 Read after the complete image set is approved and the eight-part analysis is complete. Section six's inventory controls the slices.
 
 ## Decide what remains an image
